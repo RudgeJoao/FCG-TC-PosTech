@@ -5,7 +5,7 @@ using FiapCloudGames.Api.Data;
 using FiapCloudGames.Api.Domain;
 using Microsoft.EntityFrameworkCore;
 
-namespace FiapCloudGames.Api.Services;
+namespace FiapCloudGames.Api.Services; 
 
 public class UsuarioService
 {
