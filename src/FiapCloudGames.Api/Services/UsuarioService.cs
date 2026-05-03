@@ -1,41 +1,48 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using FiapCloudGames.Api.Data;
 using FiapCloudGames.Api.Domain;
+using Microsoft.EntityFrameworkCore;
 
 namespace FiapCloudGames.Api.Services;
 
 public class UsuarioService
 {
-    private readonly List<Usuario> _usuarios = new();
+    private readonly AppDbContext _context;
 
-    public UsuarioService()
+    public UsuarioService(AppDbContext context)
     {
-        CriarUsuario("Administrador", "admin@fiap.com.br", "Admin@123", PerfilUsuario.Administrador);
+        _context = context;
     }
 
-    public Usuario CriarUsuario(string nome, string email, string senha, PerfilUsuario perfil)
+    public async Task<Usuario> CriarUsuario(string nome, string email, string senha, PerfilUsuario perfil)
     {
         ValidarEmail(email);
         ValidarSenha(senha);
 
-        if (_usuarios.Any(x => x.Email == email.Trim().ToLower()))
+        var emailNormalizado = email.Trim().ToLower();
+        var jaExiste = await _context.Usuarios.AnyAsync(x => x.Email == emailNormalizado);
+
+        if (jaExiste)
             throw new ArgumentException("Ja existe usuario com este e-mail.");
 
         var hash = GerarHash(senha);
-        var usuario = new Usuario(nome, email, hash, perfil);
+        var usuario = new Usuario(nome, emailNormalizado, hash, perfil);
 
-        _usuarios.Add(usuario);
+        _context.Usuarios.Add(usuario);
+        await _context.SaveChangesAsync();
 
         return usuario;
     }
 
-    public Usuario ValidarLogin(string email, string senha)
+    public async Task<Usuario> ValidarLogin(string email, string senha)
     {
         var emailNormalizado = email.Trim().ToLower();
         var hash = GerarHash(senha);
 
-        var usuario = _usuarios.FirstOrDefault(x => x.Email == emailNormalizado && x.SenhaHash == hash);
+        var usuario = await _context.Usuarios
+            .FirstOrDefaultAsync(x => x.Email == emailNormalizado && x.SenhaHash == hash);
 
         if (usuario == null)
             throw new UnauthorizedAccessException("E-mail ou senha invalidos.");
@@ -43,14 +50,18 @@ public class UsuarioService
         return usuario;
     }
 
-    public IReadOnlyList<Usuario> ListarUsuarios()
+    public async Task<IReadOnlyList<Usuario>> ListarUsuarios()
     {
-        return _usuarios;
+        return await _context.Usuarios
+            .AsNoTracking()
+            .ToListAsync();
     }
 
-    public Usuario BuscarPorId(Guid id)
+    public async Task<Usuario> BuscarPorId(Guid id)
     {
-        var usuario = _usuarios.FirstOrDefault(x => x.Id == id);
+        var usuario = await _context.Usuarios
+            .Include(x => x.Biblioteca)
+            .FirstOrDefaultAsync(x => x.Id == id);
 
         if (usuario == null)
             throw new ArgumentException("Usuario nao encontrado.");
@@ -58,15 +69,32 @@ public class UsuarioService
         return usuario;
     }
 
-    public IReadOnlyList<Jogo> ListarBiblioteca(Guid usuarioId)
+    public async Task<IReadOnlyList<Jogo>> ListarBiblioteca(Guid usuarioId)
     {
-        return BuscarPorId(usuarioId).Biblioteca;
+        var usuario = await BuscarPorId(usuarioId);
+        return usuario.Biblioteca;
     }
 
-    public void AdicionarJogoNaBiblioteca(Guid usuarioId, Jogo jogo)
+    public async Task AdicionarJogoNaBiblioteca(Guid usuarioId, Jogo jogo)
     {
-        var usuario = BuscarPorId(usuarioId);
-        usuario.AdicionarJogo(jogo);
+        var usuario = await BuscarPorId(usuarioId);
+        var jogoDoBanco = await _context.Jogos.FirstOrDefaultAsync(x => x.Id == jogo.Id);
+
+        if (jogoDoBanco == null)
+            throw new ArgumentException("Jogo nao encontrado.");
+
+        usuario.AdicionarJogo(jogoDoBanco);
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task CriarAdminInicial()
+    {
+        var existeAdmin = await _context.Usuarios.AnyAsync(x => x.Email == "admin@fiap.com.br");
+
+        if (!existeAdmin)
+        {
+            await CriarUsuario("Administrador", "admin@fiap.com.br", "Admin@123", PerfilUsuario.Administrador);
+        }
     }
 
     public static void ValidarEmail(string email)

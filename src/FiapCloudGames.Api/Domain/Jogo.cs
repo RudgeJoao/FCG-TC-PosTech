@@ -2,10 +2,14 @@ namespace FiapCloudGames.Api.Domain;
 
 public class Jogo
 {
-    public Guid Id { get; private set; }
-    public string Nome { get; private set; }
-    public string Descricao { get; private set; }
-    public decimal Preco { get; private set; }
+    public Guid Id { get; set; }
+    public string Nome { get; set; } = "";
+    public string Descricao { get; set; } = "";
+    public decimal Preco { get; set; }
+
+    public Jogo()
+    {
+    }
 
     public Jogo(string nome, string descricao, decimal preco)
     {

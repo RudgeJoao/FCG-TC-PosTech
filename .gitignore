@@ -4,3 +4,6 @@ obj/
 .dotnet-home/
 *.user
 *.suo
+*.db
+*.db-shm
+*.db-wal

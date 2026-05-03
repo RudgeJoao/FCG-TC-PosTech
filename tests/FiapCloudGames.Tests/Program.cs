@@ -1,5 +1,8 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using FiapCloudGames.Api.Domain;
 using FiapCloudGames.Api.Services;
+using Microsoft.Extensions.Configuration;
 
 var testes = new List<(string Nome, Action Rodar)>
 {
@@ -33,48 +36,40 @@ if (falhas > 0)
 
 static void EmailInvalido()
 {
-    var service = new UsuarioService();
-
-    DeveDarErro(() => service.CriarUsuario("Ana", "email-errado", "Senha@123", PerfilUsuario.Usuario));
+    DeveDarErro(() => UsuarioService.ValidarEmail("email-errado"));
 }
 
 static void SenhaFraca()
 {
-    var service = new UsuarioService();
-
-    DeveDarErro(() => service.CriarUsuario("Ana", "ana@email.com", "123", PerfilUsuario.Usuario));
+    DeveDarErro(() => UsuarioService.ValidarSenha("123"));
 }
 
 static void CriarUsuario()
 {
-    var service = new UsuarioService();
-    var usuario = service.CriarUsuario("Ana", "ana@email.com", "Senha@123", PerfilUsuario.Usuario);
+    var usuario = new Usuario("Ana", "ANA@EMAIL.COM", "hash-de-teste", PerfilUsuario.Usuario);
 
     Igual("ana@email.com", usuario.Email, "O e-mail deveria ser salvo em minusculo.");
 }
 
 static void TokenValido()
 {
-    var usuarioService = new UsuarioService();
-    var tokenService = new TokenService();
-    var usuario = usuarioService.CriarUsuario("Bruno", "bruno@email.com", "Senha@123", PerfilUsuario.Usuario);
+    var tokenService = new TokenService(CriarConfiguracao());
+    var usuario = new Usuario("Bruno", "bruno@email.com", "hash-de-teste", PerfilUsuario.Usuario);
 
     var token = tokenService.GerarToken(usuario);
-    var usuarioDoToken = tokenService.ValidarToken(token);
+    var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
+    var usuarioId = jwt.Claims.FirstOrDefault(x => x.Type == ClaimTypes.NameIdentifier)?.Value;
 
-    Igual(usuario.Id, usuarioDoToken?.Id, "O token deveria ter o id do usuario.");
+    Igual(usuario.Id.ToString(), usuarioId, "O token deveria ter o id do usuario.");
 }
 
 static void BibliotecaSemDuplicar()
 {
-    var usuarioService = new UsuarioService();
-    var jogoService = new JogoService();
+    var usuario = new Usuario("Carla", "carla@email.com", "hash-de-teste", PerfilUsuario.Usuario);
+    var jogo = new Jogo("Banco de Dados", "Jogo sobre consultas SQL.", 10);
 
-    var usuario = usuarioService.CriarUsuario("Carla", "carla@email.com", "Senha@123", PerfilUsuario.Usuario);
-    var jogo = jogoService.CriarJogo("Banco de Dados", "Jogo sobre consultas SQL.", 10);
-
-    usuarioService.AdicionarJogoNaBiblioteca(usuario.Id, jogo);
-    usuarioService.AdicionarJogoNaBiblioteca(usuario.Id, jogo);
+    usuario.AdicionarJogo(jogo);
+    usuario.AdicionarJogo(jogo);
 
     Igual(1, usuario.Biblioteca.Count, "O jogo nao pode aparecer duas vezes.");
 }
@@ -99,4 +94,18 @@ static void Igual<T>(T esperado, T recebido, string mensagem)
     {
         throw new Exception($"{mensagem} Esperado: {esperado}. Recebido: {recebido}.");
     }
+}
+
+static IConfiguration CriarConfiguracao()
+{
+    var dados = new Dictionary<string, string?>
+    {
+        ["Jwt:Issuer"] = "FiapCloudGames",
+        ["Jwt:Audience"] = "FiapCloudGamesUsuarios",
+        ["Jwt:SecretKey"] = "fiap-cloud-games-chave-jwt-local-para-estudo-2026"
+    };
+
+    return new ConfigurationBuilder()
+        .AddInMemoryCollection(dados)
+        .Build();
 }
