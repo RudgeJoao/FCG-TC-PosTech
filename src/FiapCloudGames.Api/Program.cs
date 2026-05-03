@@ -1,10 +1,18 @@
 using System.Security.Claims;
-using System.Text.Json;
+using System.Text;
+using FiapCloudGames.Api.Data;
 using FiapCloudGames.Api.Domain;
 using FiapCloudGames.Api.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -15,34 +23,122 @@ builder.Services.AddSwaggerGen(options =>
         Version = "v1",
         Description = "API da fase 1 para usuarios, jogos e biblioteca."
     });
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Cole apenas o token JWT gerado no login, sem escrever Bearer antes."
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
 });
 
-builder.Services.AddSingleton<UsuarioService>();
-builder.Services.AddSingleton<JogoService>();
+var jwtSecret = builder.Configuration["Jwt:SecretKey"] ?? "";
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            RoleClaimType = ClaimTypes.Role
+        };
+
+        options.Events = new JwtBearerEvents
+        {
+            OnChallenge = async context =>
+            {
+                context.HandleResponse();
+                context.Response.StatusCode = 401;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    erro = "Voce precisa fazer login com um token valido."
+                });
+            },
+            OnForbidden = async context =>
+            {
+                context.Response.StatusCode = 403;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    erro = "Somente usuarios administradores podem realizar essa acao."
+                });
+            }
+        };
+    });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Admin", policy => policy.RequireRole(PerfilUsuario.Administrador.ToString()));
+});
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddScoped<UsuarioService>();
+builder.Services.AddScoped<JogoService>();
 builder.Services.AddSingleton<TokenService>();
 
 var app = builder.Build();
 
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.MigrateAsync();
+
+    var usuarios = scope.ServiceProvider.GetRequiredService<UsuarioService>();
+    var jogos = scope.ServiceProvider.GetRequiredService<JogoService>();
+
+    await usuarios.CriarAdminInicial();
+    await jogos.CriarJogosIniciais();
+}
+
 app.UseMiddleware<ErroMiddleware>();
-app.UseMiddleware<TokenMiddleware>();
 
 app.UseSwagger();
 app.UseSwaggerUI();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapGet("/", () => Results.Redirect("/swagger"))
     .ExcludeFromDescription();
 
-app.MapPost("/usuarios", (CriarUsuarioRequest request, UsuarioService service) =>
+app.MapPost("/usuarios", async (CriarUsuarioRequest request, UsuarioService service) =>
 {
-    var usuario = service.CriarUsuario(request.Nome, request.Email, request.Senha, PerfilUsuario.Usuario);
+    var usuario = await service.CriarUsuario(request.Nome, request.Email, request.Senha, PerfilUsuario.Usuario);
     return Results.Created($"/usuarios/{usuario.Id}", usuario.ToResponse());
 })
 .WithTags("Usuarios")
 .WithSummary("Cadastrar usuario");
 
-app.MapPost("/login", (LoginRequest request, UsuarioService usuarioService, TokenService tokenService) =>
+app.MapPost("/login", async (LoginRequest request, UsuarioService usuarioService, TokenService tokenService) =>
 {
-    var usuario = usuarioService.ValidarLogin(request.Email, request.Senha);
+    var usuario = await usuarioService.ValidarLogin(request.Email, request.Senha);
     var token = tokenService.GerarToken(usuario);
 
     return Results.Ok(new LoginResponse(token, usuario.ToResponse()));
@@ -50,18 +146,22 @@ app.MapPost("/login", (LoginRequest request, UsuarioService usuarioService, Toke
 .WithTags("Autenticacao")
 .WithSummary("Fazer login");
 
-app.MapGet("/usuarios", (HttpContext context, UsuarioService service) =>
+app.MapGet("/usuarios", async (HttpContext context, UsuarioService service) =>
 {
-    context.PrecisaSerAdmin();
+    var erro = context.ValidarAdmin();
+    if (erro != null)
+    {
+        return erro;
+    }
 
-    return Results.Ok(service.ListarUsuarios().Select(x => x.ToResponse()));
+    var usuarios = await service.ListarUsuarios();
+    return Results.Ok(usuarios.Select(x => x.ToResponse()));
 })
 .WithTags("Usuarios")
 .WithSummary("Listar usuarios");
 
-app.MapGet("/usuarios/{id:guid}/biblioteca", (Guid id, HttpContext context, UsuarioService service) =>
+app.MapGet("/usuarios/{id:guid}/biblioteca", async (Guid id, HttpContext context, UsuarioService service) =>
 {
-    context.PrecisaEstarLogado();
     var perfil = context.User.FindFirstValue(ClaimTypes.Role);
     var usuarioId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -70,39 +170,43 @@ app.MapGet("/usuarios/{id:guid}/biblioteca", (Guid id, HttpContext context, Usua
         return Results.Forbid();
     }
 
-    var jogos = service.ListarBiblioteca(id);
+    var jogos = await service.ListarBiblioteca(id);
     return Results.Ok(jogos.Select(x => x.ToResponse()));
 })
 .WithTags("Biblioteca")
-.WithSummary("Listar biblioteca do usuario");
+.WithSummary("Listar biblioteca do usuario")
+.RequireAuthorization();
 
-app.MapGet("/jogos", (HttpContext context, JogoService service) =>
+app.MapGet("/jogos", async (HttpContext context, JogoService service) =>
 {
-    context.PrecisaEstarLogado();
-    return Results.Ok(service.ListarJogos().Select(x => x.ToResponse()));
+    var jogos = await service.ListarJogos();
+    return Results.Ok(jogos.Select(x => x.ToResponse()));
 })
 .WithTags("Jogos")
-.WithSummary("Listar jogos");
+.WithSummary("Listar jogos")
+.RequireAuthorization();
 
-app.MapPost("/jogos", (CriarJogoRequest request, HttpContext context, JogoService service) =>
+app.MapPost("/jogos", async (CriarJogoRequest request, HttpContext context, JogoService service) =>
 {
-    context.PrecisaSerAdmin();
+    var erro = context.ValidarAdmin();
+    if (erro != null)
+    {
+        return erro;
+    }
 
-    var jogo = service.CriarJogo(request.Nome, request.Descricao, request.Preco);
+    var jogo = await service.CriarJogo(request.Nome, request.Descricao, request.Preco);
     return Results.Created($"/jogos/{jogo.Id}", jogo.ToResponse());
 })
 .WithTags("Jogos")
 .WithSummary("Cadastrar jogo");
 
-app.MapPost("/usuarios/{usuarioId:guid}/jogos/{jogoId:guid}", (
+app.MapPost("/usuarios/{usuarioId:guid}/jogos/{jogoId:guid}", async (
     Guid usuarioId,
     Guid jogoId,
     HttpContext context,
     UsuarioService usuarios,
     JogoService jogos) =>
 {
-    context.PrecisaEstarLogado();
-
     var perfil = context.User.FindFirstValue(ClaimTypes.Role);
     var usuarioLogado = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -111,13 +215,14 @@ app.MapPost("/usuarios/{usuarioId:guid}/jogos/{jogoId:guid}", (
         return Results.Forbid();
     }
 
-    var jogo = jogos.BuscarPorId(jogoId);
-    usuarios.AdicionarJogoNaBiblioteca(usuarioId, jogo);
+    var jogo = await jogos.BuscarPorId(jogoId);
+    await usuarios.AdicionarJogoNaBiblioteca(usuarioId, jogo);
 
     return Results.Ok(new { mensagem = "Jogo adicionado na biblioteca" });
 })
 .WithTags("Biblioteca")
-.WithSummary("Adicionar jogo na biblioteca");
+.WithSummary("Adicionar jogo na biblioteca")
+.RequireAuthorization();
 
 app.Run();
 
@@ -143,25 +248,21 @@ static class ResponseExtensions
     }
 }
 
-static class HttpContextExtensions
+static class PermissaoExtensions
 {
-    public static void PrecisaEstarLogado(this HttpContext context)
+    public static IResult? ValidarAdmin(this HttpContext context)
     {
-        if (context.User.Identity?.IsAuthenticated != true)
-        {
-            throw new UnauthorizedAccessException("Voce precisa fazer login primeiro.");
-        }
-    }
-
-    public static void PrecisaSerAdmin(this HttpContext context)
-    {
-        context.PrecisaEstarLogado();
-
         var perfil = context.User.FindFirstValue(ClaimTypes.Role);
-        if (perfil != PerfilUsuario.Administrador.ToString())
+
+        if (perfil == PerfilUsuario.Administrador.ToString())
         {
-            throw new ForbiddenException("Apenas administrador pode acessar esta rota.");
+            return null;
         }
+
+        return Results.Json(new
+        {
+            erro = "Somente usuarios administradores podem realizar essa acao."
+        }, statusCode: 403);
     }
 }
 
@@ -206,42 +307,6 @@ public class ErroMiddleware
         context.Response.StatusCode = status;
         context.Response.ContentType = "application/json";
         await context.Response.WriteAsJsonAsync(new { erro = mensagem });
-    }
-}
-
-public class TokenMiddleware
-{
-    private readonly RequestDelegate _next;
-
-    public TokenMiddleware(RequestDelegate next)
-    {
-        _next = next;
-    }
-
-    public async Task InvokeAsync(HttpContext context, TokenService tokenService)
-    {
-        var authorization = context.Request.Headers.Authorization.ToString();
-
-        if (authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-        {
-            var token = authorization["Bearer ".Length..].Trim();
-            var usuario = tokenService.ValidarToken(token);
-
-            if (usuario != null)
-            {
-                var claims = new List<Claim>
-                {
-                    new(ClaimTypes.NameIdentifier, usuario.Id.ToString()),
-                    new(ClaimTypes.Email, usuario.Email),
-                    new(ClaimTypes.Role, usuario.Perfil.ToString())
-                };
-
-                var identity = new ClaimsIdentity(claims, "jwt-simples");
-                context.User = new ClaimsPrincipal(identity);
-            }
-        }
-
-        await _next(context);
     }
 }
 

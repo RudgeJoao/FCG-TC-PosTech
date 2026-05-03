@@ -2,12 +2,16 @@ namespace FiapCloudGames.Api.Domain;
 
 public class Usuario
 {
-    public Guid Id { get; private set; }
-    public string Nome { get; private set; }
-    public string Email { get; private set; }
-    public string SenhaHash { get; private set; }
-    public PerfilUsuario Perfil { get; private set; }
-    public List<Jogo> Biblioteca { get; private set; }
+    public Guid Id { get; set; }
+    public string Nome { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string SenhaHash { get; set; } = "";
+    public PerfilUsuario Perfil { get; set; }
+    public List<Jogo> Biblioteca { get; set; } = new();
+
+    public Usuario()
+    {
+    }
 
     public Usuario(string nome, string email, string senhaHash, PerfilUsuario perfil)
     {
