@@ -1,0 +1,40 @@
+@host = http://localhost:5170
+@token = cole_o_token_aqui
+
+### Criar usuario comum
+POST {{host}}/usuarios
+Content-Type: application/json
+
+{
+  "nome": "Gabriel",
+  "email": "gabriel@email.com",
+  "senha": "Senha@123"
+}
+
+### Login admin inicial
+POST {{host}}/login
+Content-Type: application/json
+
+{
+  "email": "admin@fiap.com.br",
+  "senha": "Admin@123"
+}
+
+### Listar usuarios, precisa token de admin
+GET {{host}}/usuarios
+Authorization: Bearer {{token}}
+
+### Listar jogos, precisa token
+GET {{host}}/jogos
+Authorization: Bearer {{token}}
+
+### Criar jogo, precisa token admin
+POST {{host}}/jogos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nome": "HTTP Adventure",
+  "descricao": "Jogo educativo sobre API REST.",
+  "preco": 19.90
+}
