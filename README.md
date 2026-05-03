@@ -17,7 +17,8 @@ Ele tem uma API REST em .NET 8 para cadastro de usuarios, login com token, cadas
 - Middleware para erros.
 - Logs pelo `ILogger` do ASP.NET.
 - Swagger padrao em `/swagger`, com botao `Authorize` para testar rotas com token.
-- Testes simples em console para regras de negocio.
+- Testes unitarios com xUnit para regras de negocio.
+- TDD aplicado de forma simples no modulo de validacao de usuario.
 
 ## O que ainda precisa ser feito por voce
 
@@ -60,10 +61,14 @@ A API aplica a migration automaticamente quando inicia.
 ## Como rodar os testes
 
 ```powershell
-dotnet run --project tests\FiapCloudGames.Tests
+dotnet test tests\FiapCloudGames.Tests
 ```
 
-Se aparecer `OK` em todos os testes, as regras principais passaram.
+Se todos os testes ficarem verdes, as regras principais passaram.
+
+## TDD aplicado
+
+Foi aplicado TDD de forma simples no modulo de usuario. Primeiro foram definidas regras que precisavam passar nos testes, como e-mail invalido nao ser aceito e senha fraca gerar erro. Depois essas regras foram implementadas no `UsuarioService`.
 
 ## Explicacao bem simples
 
