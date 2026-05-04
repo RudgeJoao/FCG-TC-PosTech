@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using FiapCloudGames.Api.Data;
 using FiapCloudGames.Api.Domain;
+using FiapCloudGames.Api.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
 namespace FiapCloudGames.Api.Services;
@@ -64,9 +65,36 @@ public class UsuarioService
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (usuario == null)
-            throw new ArgumentException("Usuario nao encontrado.");
+            throw new NotFoundException("Usuario nao encontrado.");
 
         return usuario;
+    }
+
+    public async Task AtualizarUsuario(Guid id, string nome, string email)
+    {
+        ValidarEmail(email);
+
+        var usuario = await BuscarPorId(id);
+
+        var emailNormalizado = email.Trim().ToLower();
+        var emailEmUso = await _context.Usuarios
+            .AnyAsync(x => x.Email == emailNormalizado && x.Id != id);
+
+        if (emailEmUso)
+            throw new ArgumentException("Ja existe outro usuario com este e-mail.");
+
+        usuario.Nome = nome.Trim();
+        usuario.Email = emailNormalizado;
+
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task RemoverUsuario(Guid id)
+    {
+        var usuario = await BuscarPorId(id);
+
+        _context.Usuarios.Remove(usuario);
+        await _context.SaveChangesAsync();
     }
 
     public async Task<IReadOnlyList<Jogo>> ListarBiblioteca(Guid usuarioId)
@@ -81,7 +109,7 @@ public class UsuarioService
         var jogoDoBanco = await _context.Jogos.FirstOrDefaultAsync(x => x.Id == jogo.Id);
 
         if (jogoDoBanco == null)
-            throw new ArgumentException("Jogo nao encontrado.");
+            throw new NotFoundException("Jogo nao encontrado.");
 
         usuario.AdicionarJogo(jogoDoBanco);
         await _context.SaveChangesAsync();

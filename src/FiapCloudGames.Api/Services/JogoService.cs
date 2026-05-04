@@ -1,5 +1,6 @@
 using FiapCloudGames.Api.Data;
 using FiapCloudGames.Api.Domain;
+using FiapCloudGames.Api.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
 namespace FiapCloudGames.Api.Services;
@@ -35,9 +36,34 @@ public class JogoService
         var jogo = await _context.Jogos.FirstOrDefaultAsync(x => x.Id == id);
 
         if (jogo == null)
-            throw new ArgumentException("Jogo nao encontrado.");
+            throw new NotFoundException("Jogo nao encontrado.");
 
         return jogo;
+    }
+
+    public async Task AtualizarJogo(Guid id, string nome, string descricao, decimal preco)
+    {
+        var jogo = await BuscarPorId(id);
+
+        if (string.IsNullOrWhiteSpace(nome))
+            throw new ArgumentException("Nome do jogo e obrigatorio.");
+
+        if (preco < 0)
+            throw new ArgumentException("Preco nao pode ser negativo.");
+
+        jogo.Nome = nome.Trim();
+        jogo.Descricao = descricao.Trim();
+        jogo.Preco = preco;
+
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task RemoverJogo(Guid id)
+    {
+        var jogo = await BuscarPorId(id);
+
+        _context.Jogos.Remove(jogo);
+        await _context.SaveChangesAsync();
     }
 
     public async Task CriarJogosIniciais()
