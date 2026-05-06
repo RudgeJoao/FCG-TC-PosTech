@@ -163,7 +163,7 @@ Regras principais:
 - Usuario comum nao pode cadastrar jogos.
 - Biblioteca nao deve duplicar jogos.
 
-O rascunho para Event Storming esta em:
+A documentacao DDD com Event Storming dos fluxos de criacao de usuarios e criacao de jogos esta em:
 
 ```text
 docs/ddd-event-storming.md
