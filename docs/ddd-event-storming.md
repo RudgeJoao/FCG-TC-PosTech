@@ -6,14 +6,14 @@ Esta documentacao modela o dominio do projeto utilizando Event Storming para map
 
 ## Legenda
 
-| Tipo | Significado |
-| --- | --- |
-| Ator | Pessoa ou perfil que inicia o fluxo |
-| Comando | Acao solicitada para a API |
-| Regra | Validacao ou regra de negocio |
-| Evento | Algo importante que aconteceu no dominio |
-| Erro | Fluxo alternativo quando uma regra nao e atendida |
-| Leitura | Consulta ou disponibilidade de informacao |
+| Cor | Tipo | Significado |
+| --- | --- | --- |
+| Amarelo | Ator | Pessoa ou perfil que inicia o fluxo |
+| Azul | Comando | Acao solicitada para a API |
+| Roxo | Regra | Validacao ou regra de negocio |
+| Laranja | Evento | Algo importante que aconteceu no dominio |
+| Vermelho | Erro | Fluxo alternativo quando uma regra nao e atendida |
+| Verde | Leitura | Consulta ou disponibilidade de informacao |
 
 ## Linguagem Ubiqua
 
@@ -28,6 +28,13 @@ Esta documentacao modela o dominio do projeto utilizando Event Storming para map
 
 ```mermaid
 flowchart LR
+    classDef ator fill:#fff176,stroke:#1f2937,stroke-width:2px,color:#111827
+    classDef comando fill:#64b5f6,stroke:#1f2937,stroke-width:2px,color:#111827
+    classDef regra fill:#ce93d8,stroke:#1f2937,stroke-width:2px,color:#111827
+    classDef evento fill:#ffb74d,stroke:#1f2937,stroke-width:2px,color:#111827
+    classDef erro fill:#ef5350,stroke:#1f2937,stroke-width:2px,color:#111827
+    classDef leitura fill:#66bb6a,stroke:#1f2937,stroke-width:2px,color:#111827
+
     visitante["Ator: Visitante / Usuario nao cadastrado"]
     comando["Comando: Cadastrar usuario\nPOST /usuarios"]
     regraEmail["Regra: validar formato do e-mail"]
@@ -47,6 +54,13 @@ flowchart LR
     regraEmail -. e-mail invalido .-> erro
     regraSenha -. senha invalida .-> erro
     regraUnico -. e-mail ja cadastrado .-> erro
+
+    class visitante ator
+    class comando comando
+    class regraEmail,regraSenha,regraUnico regra
+    class eventoCriado evento
+    class leituraLogin leitura
+    class erro erro
 ```
 
 ### Descricao do Fluxo
@@ -63,6 +77,13 @@ flowchart LR
 
 ```mermaid
 flowchart LR
+    classDef ator fill:#fff176,stroke:#1f2937,stroke-width:2px,color:#111827
+    classDef comando fill:#64b5f6,stroke:#1f2937,stroke-width:2px,color:#111827
+    classDef regra fill:#ce93d8,stroke:#1f2937,stroke-width:2px,color:#111827
+    classDef evento fill:#ffb74d,stroke:#1f2937,stroke-width:2px,color:#111827
+    classDef erro fill:#ef5350,stroke:#1f2937,stroke-width:2px,color:#111827
+    classDef leitura fill:#66bb6a,stroke:#1f2937,stroke-width:2px,color:#111827
+
     admin["Ator: Administrador"]
     comando["Comando: Cadastrar jogo\nPOST /jogos"]
     regraAuth["Regra: validar perfil Administrador"]
@@ -82,6 +103,13 @@ flowchart LR
     regraAuth -. sem permissao .-> erro
     regraNome -. nome invalido .-> erro
     regraPreco -. preco invalido .-> erro
+
+    class admin ator
+    class comando comando
+    class regraAuth,regraNome,regraPreco regra
+    class eventoCriado evento
+    class leituraDisponivel leitura
+    class erro erro
 ```
 
 ### Descricao do Fluxo
